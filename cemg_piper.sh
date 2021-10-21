@@ -114,8 +114,8 @@ if [ -f $out ]; then
 	echo "The file '$out' exists."
 else
         echo "The file '$out' is not found."
-	#python3 $Spades --meta --pe1-12 $Don_temp/${Don}Stool_inter.fastq -o ${Don_stool}_spade \
-        #-t 50 --memory 1500
+	python3 $Spades --meta --pe1-12 $Don_temp/${Don}Stool_inter.fastq.gz -o ${Don_stool}_spade \
+        -t 50 --memory 1500
 fi
 
 
@@ -188,8 +188,4 @@ echo "################################"
         bwa index $dRef
         samtools faidx $dRef
         fi
-
-
-
-
 
