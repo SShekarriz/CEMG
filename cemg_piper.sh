@@ -11,9 +11,10 @@ org=$PWD/raw-reads
 trim=$PWD/raw-reads_trimmed
 bin=$PWD/bin
 assem=$PWD/assembled
+binning=$PWD/assem_binned
 Res=$PWD/results
 mkdir -p $trim $assem $Res
-
+mkdir -p $binning
 
 
 echo "#####################################"
@@ -28,7 +29,7 @@ Spades=$PWD/bin/SPAdes-3.15.2-Linux/bin/spades.py
 echo $Spades
 LongExractor=$PWD/bin/LongContigExtractor.py
 echo $LongExractor
-
+path1="/dataone/common/software/metabat2-V2021"
 echo "#####################################"
 
 
@@ -175,7 +176,6 @@ echo "################################"
         mv ${contig_file}_out $dRef
         fi
 
-
         echo "################################"
         echo "#indexing contigs Large contigs#"
         echo "################################"
@@ -188,4 +188,190 @@ echo "################################"
         bwa index $dRef
         samtools faidx $dRef
         fi
+
+        echo "################################"
+        echo "#####Building anvio contigdb####"
+        echo "################################"
+
+	echo "changing conda env to anvio-6.2"
+	#activate conda env:
+	source /home/shekas3/anaconda3/bin/activate anvio-6.2
+        
+	dAnvi=${dRef%.fa}.db
+        if [ -f $dAnvi ]; then
+        echo "The file '$dAnvi' exists."
+        else
+        echo "The file '$dAnvi' is not found."
+        echo "Building anvio contig database"
+        #anvi-gen-contigs-database -f $dRef -o $dAnvi
+        echo "Building HMMs models"
+        #anvi-run-hmms -c $dAnvi
+        fi
+
+        echo "################################"
+        echo "####### Short-read mapping #####"
+        echo "################################"
+
+        cover=${Don_lib}_coverage
+        mkdir -p $cover
+        inter=$Don_temp
+	cd $inter
+	for file in *_inter.fastq.gz; do
+                echo "Mapping $file to $Don as follow:"
+                sample_file=$inter/${file}
+		sample=${file%_inter.fastq.gz}
+                echo "$sample_file"
+		echo $sample
+	        if [ -f $cover/${sample}.bam ]; then
+                echo "The file '$cover/${sample}.bam' exists."
+                else
+                echo "The file '$cover/${sample}.bam' is not found."
+                echo "Mapping short-reads to assembly"
+                bwa mem -t 15 -p $dRef $sample_file | $Samtools sort -@ 15 | $Samtools view -@ 15 -bS -o $cover/${sample}.bam
+                fi
+
+                if [ -f $cover/${sample}.bam.bai ]; then
+                echo "The file '$cover/${sample}.bam.bai' exists."
+                else
+                echo "The file '$cover/${sample}.bam.bai' is not found."
+                $Samtools index $cover/${sample}.bam
+                fi
+
+                if [ -f $cover/${sample}.coverage.txt ]; then
+                echo "The file '$cover/${sample}.coverage.txt' exists."
+                else
+                echo "The file '$cover/${sample}.coverage.txt' is not found."
+                echo "Calculating the number of mapped reads"
+                $Samtools coverage $cover/${sample}.bam > $cover/${sample}.coverage.txt
+                fi
+
+                if [ -f $cover/${sample}.bam-ANVIO_PROFILE/PROFILE.db ]; then
+                echo "The file '$cover/${sample}.bam-ANVIO_PROFILE/PROFILE.db' exists."
+                else
+                echo "The file '$cover/${sample}.bam-ANVIO_PROFILE' is not found."
+                echo "Building anvio sample database"
+                anvi-profile -i $cover/${sample}.bam -c $dAnvi
+                fi
+
+	done
+
+	echo "########################################"
+        echo "Binning the cotnigs using Metabat"
+        echo "########################################"
+	
+        BIN=${binning}/${Don}_CEMG_bins
+        mkdir -p $BIN
+
+        metabat_tbl=$binning/${Don}_CEMG_depthForMetabat.txt
+        if [ -f $metabat_tbl ]; then
+        echo "The file '$metabat_tbl' exists."
+        else
+        echo "The file '$metabat_tbl' is not found."
+        echo "Making a coverage table from bam file for metabat2"
+        $path1/jgi_summarize_bam_contig_depths --outputDepth $metabat_tbl $cover/*.bam
+        fi
+
+        if [ -f $BIN/bin.1.fa ]; then
+        echo "The file '$BIN/bin.1.fa' exists."
+        else
+        echo "The file '$BIN/bin.1.fa' is not found."
+        echo "Binning the contigs"
+        $path1/metabat2 -i $ptRef -a $metabat_tbl -o $BIN/bin
+        fi
+
+        binInfo=$BIN/contig_in_bins_anvi.txt
+        if [ -f $binInfo ]; then
+        echo "The file '$binInfo' exists."
+        else
+        echo "The file '$binInfo' is not found."
+        grep -e "^>" $BIN/bin* > $BIN/contig_in_bins.txt
+        Rscript $bin_info_sorter $BIN/contig_in_bins.txt $binInfo
+        rm $BIN/contig_in_bins.txt
+        fi
+
+        echo "################################"
+        echo "#####Building anvio sampledb####"
+        echo "################################"
+
+        dAnviProfile=$cover/SAMPLES-MERGED/PROFILE.db
+        if [ -f $dAnviProfile ]; then
+        echo "The file '$dAnviProfile' exists."
+        else
+        echo "The file '$dAnviProfile' is not found."
+        anvi-merge $cover/*ANVIO_PROFILE/PROFILE.db -o $cover/SAMPLES-MERGED -c $dAnvi
+        echo "Importing metabat2 bin info"
+        anvi-import-collection $binInfo -p $dAnviProfile -c $dAnvi --contigs-mode -C metabat2
+        anvi-script-add-default-collection -p $dAnviProfile -c $dAnvi -C default
+        fi
+
+        echo "################################"
+        echo "#####Exporting coverage table###"
+        echo "################################"
+
+        dAnviSUM_M=$cover/SAMPLES-MERGED-SUM-metabat2/bins_summary.txt
+        if [ -f $dAnviSUM_M ]; then
+        echo "The file '$dAnviSUM_M' exists."
+        else
+        echo "The file '$dAnviSUM_M' is not found."
+        anvi-summarize -p $dAnviProfile -c $dAnvi -C metabat2 -o $cover/SAMPLES-MERGED-SUM-metabat2 --init-gene-coverages
+        fi
+
+        dAnviSUM_D=$cover/SAMPLES-MERGED-SUM-default/bins_summary.txt
+        if [ -f $dAnviSUM_D ]; then
+        echo "The file '$dAnviSUM_D' exists."
+        else
+        echo "The file '$dAnviSUM_D' is not found."
+        anvi-summarize -p $dAnviProfile -c $dAnvi -C default -o $cover/SAMPLES-MERGED-SUM-default --init-gene-coverages
+        fi
+
+        echo "#########################################"
+        echo "check the quality of BINS using checkM"
+        echo "##########################################"
+
+        BINQ=${binning}/${Don}_CEMG_bins_quality
+        mkdir -p $BINQ
+        echo "CHANGING THE CONDA ENVIRONMENT!!!!"
+        source /home/shekas3/anaconda3/bin/activate py2
+
+        if [ -f $BINQ/lineage_wf/lineage.ms ]; then
+        echo "The file '$BINQ/lineage_wf/lineage.ms' exists."
+        else
+        echo "The file '$BINQ/lineage_wf/lineage.ms' is not found."
+        checkm lineage_wf -x fa -t 10 $BIN $BINQ/lineage_wf
+        fi
+
+        if [ -f $BINQ/lineage_wf/${Don}_bin_qc.txt ]; then
+        echo "The file '$BINQ/lineage_wf/${Don}_bin_qc.txt' exists."
+        else
+        echo "The file '$BINQ/lineage_wf/${Don}_bin_qc.txt' is not found."
+        checkm qa $BINQ/lineage_wf/lineage.ms \
+        $BINQ/lineage_wf -o 1 --tab_table > $BINQ/lineage_wf/${Don}_bin_qc.txt
+        fi
+
+        echo "######################################"
+        echo "Running gtdbtk (taxonomy) for each bin"
+        echo "######################################"
+
+        BINT=${binning}/${Don}_CEMG_bins_taxonomy
+        mkdir -p $BINT
+        echo "CHANGING THE CONDA ENVIRONMENT!!!!"
+        source /home/shekas3/anaconda3/bin/activate gtdbtk
+
+        gtdb_out="$BINT/classify/${Don}.bac120.summary.tsv"
+        if [ -f $gtdb_out ]; then
+        echo "The file '$gtdb_out' exists."
+        else
+        echo "The file '$gtdb_out' is not found."
+        gtdbtk classify_wf --genome_dir $BIN --cpus 20 --out_dir $BINT --extension fa --prefix $Don
+        fi
+
+
+
+	#LOOK INTO TCEMG/g_and_g_TCEMG.sh for the rest ...
+
+
+
+
+
+
 
