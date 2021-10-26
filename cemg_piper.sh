@@ -13,6 +13,7 @@ bin=$PWD/bin
 assem=$PWD/assembled
 binning=$PWD/assem_binned
 Res=$PWD/results
+human=$PWD/raw-reads_trim_Humann3
 mkdir -p $trim $assem $Res
 mkdir -p $binning
 
@@ -30,6 +31,8 @@ echo $Spades
 LongExractor=$PWD/bin/LongContigExtractor.py
 echo $LongExractor
 path1="/dataone/common/software/metabat2-V2021"
+bin_info_sorter=$PWD/bin/bin_info_sorter.R
+echo $bin_info_sorter
 echo "#####################################"
 
 
@@ -203,9 +206,9 @@ echo "################################"
         else
         echo "The file '$dAnvi' is not found."
         echo "Building anvio contig database"
-        #anvi-gen-contigs-database -f $dRef -o $dAnvi
+        anvi-gen-contigs-database -f $dRef -o $dAnvi
         echo "Building HMMs models"
-        #anvi-run-hmms -c $dAnvi
+        anvi-run-hmms -c $dAnvi
         fi
 
         echo "################################"
@@ -276,17 +279,17 @@ echo "################################"
         else
         echo "The file '$BIN/bin.1.fa' is not found."
         echo "Binning the contigs"
-        $path1/metabat2 -i $ptRef -a $metabat_tbl -o $BIN/bin
+        $path1/metabat2 -i $dRef -a $metabat_tbl -o $BIN/bin
         fi
 
-        binInfo=$BIN/contig_in_bins_anvi.txt
+        binInfo=${BIN}/contig_in_bins_anvi.txt
         if [ -f $binInfo ]; then
         echo "The file '$binInfo' exists."
         else
         echo "The file '$binInfo' is not found."
-        grep -e "^>" $BIN/bin* > $BIN/contig_in_bins.txt
-        Rscript $bin_info_sorter $BIN/contig_in_bins.txt $binInfo
-        rm $BIN/contig_in_bins.txt
+        grep -e "^>" ${BIN}/bin* > ${BIN}/contig_in_bins.txt
+        Rscript $bin_info_sorter ${BIN}/contig_in_bins.txt $binInfo
+        rm ${BIN}/contig_in_bins.txt
         fi
 
         echo "################################"
@@ -366,8 +369,27 @@ echo "################################"
         fi
 
 
+echo "#########################################################"
+echo "Running Humann3 on the metagenomic reads"
+echo "#########################################################"
+source /home/shekas3/anaconda3/bin/activate humann3
+#Humann2 wants to have paired-end reads in a concatanated form, it can't properly
+# use the paired-end information
+mkdir -p $human
 
-	#LOOK INTO TCEMG/g_and_g_TCEMG.sh for the rest ...
+cd $inter
+for sample in *_inter.fastq.gz
+do
+        echo $sample
+        basename=${sample%_inter.fastq.gz}
+        human_out=$human/${basename}/${basename}_inter_genefamilies.tsv
+        if [ -f $human_out ]; then
+        echo "the file '$human_out' exists."
+        else
+        echo "the file '$human_out' is not found."
+        #humann --input ${sample} --output $human/${basename} --threads 15
+        fi
+done
 
 
 
