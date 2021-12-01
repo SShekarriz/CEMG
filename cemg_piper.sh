@@ -14,8 +14,9 @@ assem=$PWD/assembled
 binning=$PWD/assem_binned
 Res=$PWD/results
 human=$PWD/raw-reads_trim_Humann3
+B_marker=$PWD/DonorB_markers
 mkdir -p $trim $assem $Res
-mkdir -p $binning
+mkdir -p $binning $B_marker
 
 
 echo "#####################################"
@@ -370,6 +371,105 @@ echo "################################"
 
 
 echo "#########################################################"
+echo "comparing SHCM15 VS DonorB"
+echo "1. percentage of mapped reads"
+echo "#########################################################"
+
+B_DMGs="/dataone/shekas3/UCFMT1/DonorB_metagenomics/Trim_interleaved"
+B_cov=$assem/DonorB_DMG_coverage
+mkdir -p $B_cov
+
+out=$B_cov/DonorB_D_2013.flagstat
+if [ -f $out ]; then
+	echo "The file '$out' exists."
+else
+	echo "The file '$out' is not found."
+	cd $B_DMGs
+	ext="_001_inter.fastq"
+	for file in *$ext
+	do
+		echo $file
+		sample=${file%$ext}
+		echo $sample
+                bwa mem -t 15 -p $dRef \
+		$file | $Samtools sort -@ 15 | $Samtools view -@ 15 -bS \
+		-o $B_cov/${sample}.bam
+
+		$Samtools flagstat $B_cov/${sample}.bam > $B_cov/${sample}.flagstat
+
+	done
+	cd $proj
+fi
+
+
+echo "#########################################################"
+echo "comparing SHCM15 VS DonorB"
+echo "2. Donor B's commonly engrafted strains marker coverage"
+echo "#########################################################"
+
+CEGs=$B_marker/gene_engraft_all_com_complete.fasta
+SPM=$B_marker/species_markers.fa
+
+if [ -f ${CEGs}.fai ]; then
+   echo "The file '${CEGs}.fai' exists."
+else
+   echo "The file '${CEGs}.fai' is not found."
+   echo "Indexing the contig file now"
+   bwa index $CEGs
+   samtools faidx $CEGs
+fi
+
+if [ -f ${SPM}.fai ]; then
+   echo "The file '${SPM}.fai' exists."
+else
+   echo "The file '${SPM}.fai' is not found."
+   echo "Indexing the contig file now"
+   bwa index $SPM
+   samtools faidx $SPM
+fi
+
+B_marker_cov=$B_marker/coverage
+mkdir -p $B_marker_cov
+stool_s=$Don_temp/${Don}Stool_inter.fastq.gz
+
+out=$B_marker_cov/${Don}Stool_to_CEGs.coverage.txt
+if [ -f $out ]; then
+   echo "The file '$out' exists."
+else
+   echo "The file '$out' is not found."
+
+	#bwa mem -t 15 -p $CEGs $stool_s \
+ 	#-O 60 -E 10 -L 100 | $Samtools sort -@ 15 | $Samtools view \
+	#-@ 15 -F 4 -o $B_marker_cov/${Don}Stool_to_CEGs.bam
+	$Samtools coverage $B_marker_cov/${Don}Stool_to_CEGs.bam \
+	> $B_marker_cov/${Don}Stool_to_CEGs.coverage.txt
+
+	#bwa mem -t 15 -p $SPM $stool_s \
+        #-O 60 -E 10 -L 100 | $Samtools sort -@ 15 | $Samtools view \
+        #-@ 15 -F 4 -o $B_marker_cov/${Don}Stool_to_SpeciesMarker.bam
+	$Samtools coverage $B_marker_cov/${Don}Stool_to_SpeciesMarker.bam \
+	> $B_marker_cov/${Don}Stool_to_SpeciesMarker.coverage.txt
+fi
+
+
+echo "#########################################################"
+echo "Figures: comparing B vs. SHCM15"
+echo "#########################################################"
+
+out=$Res/marker_in_SHCM15.png
+if [ -f $out ]; then
+	echo "the file '$out' exists."
+else
+        echo "the file '$out' is not found."
+	Rscript $bin/BvsSHCM15.R
+fi
+
+
+
+
+
+:<<"END"
+echo "#########################################################"
 echo "Running Humann3 on the metagenomic reads"
 echo "#########################################################"
 source /home/shekas3/anaconda3/bin/activate humann3
@@ -387,13 +487,11 @@ do
         echo "the file '$human_out' exists."
         else
         echo "the file '$human_out' is not found."
-        #humann --input ${sample} --output $human/${basename} --threads 15
+        humann --input ${sample} --output $human/${basename} --threads 15
         fi
 done
 
 
-
-
-
+END
 
 
