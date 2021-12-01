@@ -438,15 +438,15 @@ if [ -f $out ]; then
 else
    echo "The file '$out' is not found."
 
-	#bwa mem -t 15 -p $CEGs $stool_s \
- 	#-O 60 -E 10 -L 100 | $Samtools sort -@ 15 | $Samtools view \
-	#-@ 15 -F 4 -o $B_marker_cov/${Don}Stool_to_CEGs.bam
+	bwa mem -t 15 -p $CEGs $stool_s \
+ 	-O 60 -E 10 -L 100 | $Samtools sort -@ 15 | $Samtools view \
+	-@ 15 -F 4 -o $B_marker_cov/${Don}Stool_to_CEGs.bam
 	$Samtools coverage $B_marker_cov/${Don}Stool_to_CEGs.bam \
 	> $B_marker_cov/${Don}Stool_to_CEGs.coverage.txt
 
-	#bwa mem -t 15 -p $SPM $stool_s \
-        #-O 60 -E 10 -L 100 | $Samtools sort -@ 15 | $Samtools view \
-        #-@ 15 -F 4 -o $B_marker_cov/${Don}Stool_to_SpeciesMarker.bam
+	bwa mem -t 15 -p $SPM $stool_s \
+        -O 60 -E 10 -L 100 | $Samtools sort -@ 15 | $Samtools view \
+        -@ 15 -F 4 -o $B_marker_cov/${Don}Stool_to_SpeciesMarker.bam
 	$Samtools coverage $B_marker_cov/${Don}Stool_to_SpeciesMarker.bam \
 	> $B_marker_cov/${Don}Stool_to_SpeciesMarker.coverage.txt
 fi
